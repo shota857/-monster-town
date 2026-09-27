@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#182b39">
+<title>モンスタークエスト</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#172631;color:#f5f0d8;font-family:ui-monospace,Menlo,monospace;display:flex;justify-content:center;min-height:100vh;touch-action:manipulation}
+#app{width:min(100%,560px);padding:12px;padding-bottom:calc(18px + env(safe-area-inset-bottom));}
+header{text-align:center;color:#f4d66b;text-shadow:2px 2px #713d46;margin:4px 0 10px;font-size:clamp(20px,5vw,30px);font-weight:900}
+.panel{background:#294351;border:4px solid #71939a;box-shadow:inset 0 0 0 3px #162c38;border-radius:7px;padding:12px;margin-bottom:10px}
+h2,h3{margin:0 0 8px;color:#f4d66b}p{line-height:1.5;margin:7px 0}
+button{font: bold 15px ui-monospace,monospace;color:#fff7dc;background:#426c79;border:3px solid #a2c2bd;border-radius:5px;padding:12px 10px;box-shadow:0 3px #142832;cursor:pointer;min-height:46px}
+button:active{transform:translateY(2px);box-shadow:0 1px #142832}button:disabled{opacity:.45}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.choice{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;font-size:13px}
+canvas{width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;border:4px solid #a2c2bd;border-radius:4px;background:#7fb65c;display:block}
+#screen{display:none}#fieldUI{display:none}
+.status{display:flex;justify-content:space-between;gap:8px;font-size:13px;flex-wrap:wrap}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:260px;margin:10px auto 0}
+.controls button{font-size:20px;padding:9px}
+.controls .blank{visibility:hidden}
+#battle{display:none}
+.battlefield{background:#a6c77b;border:4px solid #d3e2b0;border-radius:4px;padding:12px;color:#203b2c;min-height:240px;position:relative;overflow:hidden}
+.creatures{display:flex;justify-content:space-between;align-items:center;height:145px}
+.mon{width:45%;text-align:center;font-weight:bold}.mon canvas{border:0;background:transparent;width:100%;max-width:150px;margin:auto;image-rendering:pixelated}
+.hp{height:12px;background:#5b5550;border:2px solid #fff7d0;border-radius:10px;overflow:hidden;margin:5px 0}.hp span{display:block;height:100%;background:#65d36d;width:100%}
+#log{min-height:52px;font-size:14px;line-height:1.45}
+.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.small{font-size:12px;color:#c4d8d3}
+@media(max-width:380px){button{font-size:13px;padding:10px 6px}.panel{padding:9px}.choice{font-size:11px}}
+</style>
+</head>
+<body><main id="app">
+<header>★ MONSTER QUEST ★</header>
+<section id="start" class="panel">
+<h2>冒険のはじまり</h2>
+<p>オリジナルの冒険者となり、相棒モンスターと世界を旅しよう！</p>
+<p>最初の相棒を1匹選んでください。</p>
+<div class="grid3" id="starterChoices"></div>
+<p class="small">※オリジナルのモンスター・世界で構成したファン向け試作ゲームです。</p>
+</section>
+<section id="screen">
+<div class="panel status"><span id="trainer">冒険者 Lv.1</span><span id="partyCount">仲間 1/6</span><span id="balls">ボール ×5</span></div>
+<canvas id="world" width="320" height="240"></canvas>
+<div id="fieldUI" class="panel">
+<h3 id="place">ミドリの草原</h3>
+<p id="fieldMessage">草むらを歩くと野生モンスターが現れる！</p>
+<div class="controls">
+<div class="blank"></div><button onclick="move(0,-1)">▲</button><div class="blank"></div>
+<button onclick="move(-1,0)">◀</button><button onclick="move(0,1)">▼</button><button onclick="move(1,0)">▶</button>
+</div>
+<div class="grid3" style="margin-top:10px"><button onclick="showParty()">仲間</button><button onclick="heal()">休憩</button><button onclick="showHelp()">あそびかた</button></div>
+</div>
+</section>
+<section id="battle" class="panel">
+<h2 id="battleTitle">野生モンスターが現れた！</h2>
+<div class="battlefield"><div class="creatures">
+<div class="mon"><div id="enemyName">野生</div><canvas id="enemySprite" width="96" height="96"></canvas><div class="hp"><span id="enemyHP"></span></div><small id="enemyStats"></small></div>
+<div class="mon"><div id="allyName">相棒</div><canvas id="allySprite" width="96" height="96"></canvas><div class="hp"><span id="allyHP"></span></div><small id="allyStats"></small></div>
+</div></div>
+<div id="log" class="panel">どうする？</div>
+<div class="actions" id="battleActions"></div>
+</section>
+<section id="partyPanel" class="panel" style="display:none"><h2>なかま</h2><div id="partyList"></div><button onclick="closeParty()" style="width:100%;margin-top:8px">もどる</button></section>
+</main>
+<script>
+const mons=[
+{id:'pyro',name:'ヒノコロ',type:'炎',color:'#e66b45',accent:'#ffd05a',hp:25,atk:8,def:4,skill:'ひばしら',starter:'小さな火トカゲ。元気いっぱい。'},
+{id:'mizu',name:'ミズポン',type:'水',color:'#4d9fe0',accent:'#b8f4ff',hp:29,atk:6,def:6,skill:'みずでっぽう',starter:'ぷるぷるした水の精。'},
+{id:'kusa',name:'ハッパル',type:'草',color:'#65b95c',accent:'#d9f57b',hp:27,atk:7,def:5,skill:'リーフカッター',starter:'葉っぱの耳を持つ森の子。'},
+{id:'tama',name:'タマリン',type:'無',color:'#a18ad7',accent:'#f5d5ff',hp:20,atk:5,def:3,skill:'たいあたり'},
+{id:'mush',name:'キノポン',type:'草',color:'#d78b65',accent:'#ffdf8a',hp:23,atk:6,def:4,skill:'胞子パンチ'},
+{id:'komori',name:'ヨルモリ',type:'闇',color:'#5a567e',accent:'#c5baff',hp:26,atk:8,def:3,skill:'よるのかぜ'}
+];
+let party=[],balls=5,steps=0,px=5,py=6,mode='field',enemy=null;
+const $=id=>document.getElementById(id);
+function makeMon(base,level=3){return {...base,level,maxhp:base.hp+level*3,hp:base.hp+level*3,atk:base.atk+level,def:base.def+Math.floor(level/2),xp:0}}
+function pixelMonster(ctx,base){
+ ctx.clearRect(0,0,96,96);ctx.imageSmoothingEnabled=false;
+ const c=base.color,a=base.accent;
+ function rect(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(x,y,w,h)}
+ // pixel-art blob with ears/horns and feet
+ rect(32,19,32,8,c);rect(24,27,48,8,c);rect(18,35,60,24,c);rect(24,59,48,12,c);rect(30,71,12,8,c);rect(56,71,12,8,c);
+ rect(24,19,12,8,a);rect(60,19,12,8,a);rect(30,39,8,8,'#fff');rect(58,39,8,8,'#fff');rect(33,42,4,5,'#172631');rect(61,42,4,5,'#172631');rect(40,54,16,4,'#172631');
+ if(base.type==='炎'){rect(40,7,16,12,'#f8a33b');rect(44,3,8,8,'#ffe477');}
+ if(base.type==='水'){rect(40,7,16,12,'#b8f4ff');rect(44,3,8,8,'#fff');}
+ if(base.type==='草'){rect(40,7,16,12,'#a1df5b');rect(44,3,8,8,'#e4ff9a');}
+}
+function renderStarter(){ $('starterChoices').innerHTML='';mons.slice(0,3).forEach(m=>{let b=document.createElement('button');b.className='choice';let c=document.createElement('canvas');c.width=c.height=96;pixelMonster(c.getContext('2d'),m);b.append(c,document.createTextNode(m.name+'（'+m.type+'）'),document.createTextNode(m.starter));b.onclick=()=>startGame(m);$('starterChoices').append(b)})}
+function startGame(m){party=[makeMon(m,5)];$('start').style.display='none';$('screen').style.display='block';$('fieldUI').style.display='block';drawWorld();updateStatus();save()}
+function drawWorld(){let c=$('world').getContext('2d');c.imageSmoothingEnabled=false;let tile=16;
+for(let y=0;y<15;y++)for(let x=0;x<20;x++){let grass=((x*13+y*7)%5===0);c.fillStyle=grass?'#70ad4d':'#83bd5a';c.fillRect(x*tile,y*tile,tile,tile);
+if(grass){c.fillStyle='#4c8b43';c.fillRect(x*tile+3,y*tile+5,3,6);c.fillRect(x*tile+9,y*tile+2,3,7)}
+}
+ // path and pond
+ for(let x=0;x<20;x++){c.fillStyle='#c9b27b';c.fillRect(x*16,176,16,16);c.fillStyle='#d9c58e';c.fillRect(x*16,192,16,16)}
+ c.fillStyle='#4b9fc2';c.fillRect(220,20,70,48);c.fillStyle='#86d5e8';c.fillRect(228,28,50,5);
+ // trees
+ for(let [x,y] of [[2,2],[3,2],[15,3],[16,3],[2,10],[17,9],[18,9]]){c.fillStyle='#75513b';c.fillRect(x*16+6,y*16+8,5,10);c.fillStyle='#347b43';c.fillRect(x*16,y*16,16,13);c.fillStyle='#54a44c';c.fillRect(x*16+3,y*16+2,8,6)}
+ // tiny house
+ c.fillStyle='#d9d2ad';c.fillRect(40,100,48,38);c.fillStyle='#a95149';c.fillRect(36,94,56,12);c.fillStyle='#70463c';c.fillRect(58,119,12,19);c.fillStyle='#8bd4e4';c.fillRect(45,110,9,9);
+ // player sprite
+ c.fillStyle='#254a91';c.fillRect(px*16+4,py*16+7,9,8);c.fillStyle='#e8b88b';c.fillRect(px*16+4,py*16+1,9,7);c.fillStyle='#4d3426';c.fillRect(px*16+3,py*16,11,4);c.fillStyle='#fff';c.fillRect(px*16+10,py*16+4,2,2);
+}
+function move(dx,dy){if(mode!=='field')return;px=Math.max(0,Math.min(19,px+dx));py=Math.max(0,Math.min(14,py+dy));steps++;drawWorld();if(steps%5===0 && Math.random()<.55)encounter();else $('fieldMessage').textContent='草むらを探索中…（歩数 '+steps+'）'}
+function encounter(){let b=mons[3+Math.floor(Math.random()*3)];enemy=makeMon(b,2+Math.floor(Math.random()*4));mode='battle';$('battle').style.display='block';$('fieldUI').style.display='none';$('battleTitle').textContent='やせいの '+enemy.name+' が あらわれた！';$('enemyName').textContent=enemy.name+' Lv.'+enemy.level;$('allyName').textContent=party[0].name+' Lv.'+party[0].level;pixelMonster($('enemySprite').getContext('2d'),enemy);pixelMonster($('allySprite').getContext('2d'),party[0]);battleUI();log(enemy.name+'が飛び出してきた！どうする？')}
+function log(t){$('log').textContent=t}
+function battleUI(){let a=$('battleActions');a.innerHTML='';[['たたかう',attack],['モンスターボール',capture],['にげる',run]].forEach(([t,f])=>{let b=document.createElement('button');b.textContent=t+(t==='モンスターボール'?' ×'+balls:'');b.onclick=f;a.append(b)});refreshHP()}
+function refreshHP(){let p=party[0];$('allyHP').style.width=Math.max(0,p.hp/p.maxhp*100)+'%';$('enemyHP').style.width=Math.max(0,enemy.hp/enemy.maxhp*100)+'%';$('allyStats').textContent='HP '+p.hp+'/'+p.maxhp;$('enemyStats').textContent='HP '+enemy.hp+'/'+enemy.maxhp}
+function attack(){let p=party[0];let dmg=Math.max(2,p.atk+Math.floor(Math.random()*5)-enemy.def);enemy.hp-=dmg;if(enemy.hp<=0){enemy.hp=0;refreshHP();log(enemy.name+'をたおした！経験値を '+(8+enemy.level*3)+' もらった！');p.xp+=8+enemy.level*3;if(p.xp>=p.level*12){p.xp=0;p.level++;p.maxhp+=4;p.hp=p.maxhp;p.atk+=2;log(p.name+'はレベル '+p.level+' に上がった！')}setTimeout(endBattle,1100);return}log(p.name+'の '+p.skill+'！ '+dmg+'ダメージ！');refreshHP();setTimeout(enemyTurn,700)}
+function enemyTurn(){if(mode!=='battle')return;let p=party[0],d=Math.max(1,enemy.atk+Math.floor(Math.random()*3)-p.def);p.hp-=d;if(p.hp<=0){p.hp=1;log(p.name+'は倒れそうだ！休憩して回復しよう。')}else log(enemy.name+'の攻撃！ '+d+'ダメージ！');refreshHP()}
+function capture(){if(balls<=0){log('モンスターボールがない！');return}balls--;if(Math.random()<.48+((enemy.maxhp-enemy.hp)/enemy.maxhp)*.48){if(party.length<6){party.push(enemy);log(enemy.name+'を捕まえた！仲間になった！')}else log('捕獲成功！でも仲間がいっぱいだ…');updateStatus();setTimeout(endBattle,1000)}else{log('ボールから出てしまった！');refreshHP();setTimeout(enemyTurn,700)}}
+function run(){log('うまく逃げ切った！');setTimeout(endBattle,500)}
+function endBattle(){mode='field';$('battle').style.display='none';$('fieldUI').style.display='block';$('fieldMessage').textContent='冒険を続けよう！';updateStatus();save()}
+function updateStatus(){$('trainer').textContent='冒険者';$('partyCount').textContent='仲間 '+party.length+'/6';$('balls').textContent='ボール ×'+balls}
+function showParty(){let d=$('partyPanel');d.style.display='block';$('partyList').innerHTML=party.map(m=>`<div class="panel"><b>${m.name} Lv.${m.level}（${m.type}）</b><br>HP ${m.hp}/${m.maxhp}　攻撃 ${m.atk}　防御 ${m.def}<br>技：${m.skill}</div>`).join('')}
+function closeParty(){$('partyPanel').style.display='none'}
+function heal(){party.forEach(m=>m.hp=m.maxhp);balls=Math.min(20,balls+1);updateStatus();$('fieldMessage').textContent='ひと休みして全回復！ボールも1個補充された。';save()}
+function showHelp(){alert('十字キーで移動。草むらを歩くと野生モンスターが出現します。戦ってHPを減らし、モンスターボールで捕獲！「仲間」でステータス確認、「休憩」で全回復できます。')}
+function save(){try{localStorage.setItem('monsterQuestSave',JSON.stringify({party,balls,px,py,steps}))}catch(e){}}
+function load(){try{let s=JSON.parse(localStorage.getItem('monsterQuestSave'));if(s&&s.party?.length){party=s.party;balls=s.balls;px=s.px;py=s.py;steps=s.steps;$('start').style.display='none';$('screen').style.display='block';$('fieldUI').style.display='block';drawWorld();updateStatus()}}catch(e){}}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowUp')move(0,-1);if(e.key==='ArrowDown')move(0,1);if(e.key==='ArrowLeft')move(-1,0);if(e.key==='ArrowRight')move(1,0)});
+renderStarter();load();
+</script></body></html>
