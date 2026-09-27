@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>モンスタークロニクル</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101b2b;color:#fff;font-family:system-ui,-apple-system,sans-serif;display:flex;justify-content:center}
+#game{width:min(100vw,520px);min-height:100vh;background:#18283b;padding:12px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:21px;text-align:center;margin:2px;color:#f8d66d;letter-spacing:1px}
+.panel{background:#243a50;border:3px solid #58758c;border-radius:10px;padding:10px;box-shadow:inset 0 0 0 2px #172637}
+#scene{position:relative;background:#6fae5c;border:4px solid #c5d7b2;border-radius:8px;overflow:hidden;aspect-ratio:1.25}
+canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+#status{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+#message{min-height:58px;line-height:1.45;font-size:14px}
+button{font:700 15px system-ui;border:0;border-radius:9px;padding:13px 8px;background:#f1c85b;color:#253247;box-shadow:0 3px #a37e29;touch-action:manipulation}
+button:active{transform:translateY(2px);box-shadow:0 1px #a37e29}
+button:disabled{opacity:.4}
+.row{display:flex;gap:8px}.row>*{flex:1}
+#starter button{background:#d5e9ff;box-shadow:0 3px #779ab8}
+#controls{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:250px;margin:auto}
+#controls button{font-size:22px;padding:10px;background:#9db8ca;box-shadow:0 3px #58758c}
+#controls .blank{visibility:hidden}
+.small{font-size:12px;color:#c6d5e2;text-align:center}
+.hidden{display:none!important}
+.hp{height:8px;background:#522f39;border-radius:8px;overflow:hidden;margin-top:4px}.hp span{display:block;height:100%;background:#65df89}
+</style>
+</head>
+<body>
+<main id="game">
+<h1>★ モンスタークロニクル ★</h1>
+<div id="status" class="panel"><span>主人公：レン</span><span id="partyText">仲間：なし</span><span id="balls">モンスターボール：5</span></div>
+<div id="scene"><canvas id="screen" width="320" height="256"></canvas></div>
+<div id="message" class="panel">世界のはじまりへようこそ！まずは最初のパートナーを選ぼう。</div>
+<div id="starter" class="panel">
+  <b>最初のパートナーを選んでください</b>
+  <div class="row" style="margin-top:9px">
+    <button onclick="choose('flamlet')">ヒノコ<br><small>ほのお</small></button>
+    <button onclick="choose('bubblit')">ミズン<br><small>みず</small></button>
+    <button onclick="choose('leafling')">ハッパル<br><small>くさ</small></button>
+  </div>
+</div>
+<div id="explore" class="panel hidden">
+  <div class="row"><button onclick="explore()">草むらを探検</button><button onclick="heal()">休んで回復</button></div>
+  <div class="small" style="margin:8px 0">十字キーでフィールドを歩こう。草むらでは野生モンスターが出現！</div>
+  <div id="controls">
+    <span class="blank"></span><button onclick="move(0,-1)">▲</button><span class="blank"></span>
+    <button onclick="move(-1,0)">◀</button><button onclick="move(0,1)">▼</button><button onclick="move(1,0)">▶</button>
+  </div>
+</div>
+<div id="battle" class="panel hidden">
+  <div id="battleInfo"></div>
+  <div class="row" style="margin-top:10px">
+    <button onclick="attack()">こうげき</button><button onclick="throwBall()">つかまえる</button><button onclick="runAway()">にげる</button>
+  </div>
+</div>
+<div class="small">オリジナル試作版・進行状況はこのページを開いている間保持されます</div>
+</main>
+<script>
+const c=document.getElementById('screen'),ctx=c.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+const mons={
+ flamlet:{name:'ヒノコ',type:'ほのお',color:'#f16b45',hp:28,max:28,atk:9,art:'fire'},
+ bubblit:{name:'ミズン',type:'みず',color:'#55bce8',hp:32,max:32,atk:7,art:'water'},
+ leafling:{name:'ハッパル',type:'くさ',color:'#7bd16b',hp:30,max:30,atk:8,art:'leaf'},
+ rocko:{name:'ゴロット',type:'じめん',color:'#b69b72',hp:26,max:26,atk:8,art:'rock'},
+ puffin:{name:'フワリ',type:'ひこう',color:'#c8b8f2',hp:22,max:22,atk:7,art:'air'}
+};
+let player={x:5,y:5},starter=null,party=[],balls=5,enemy=null,inBattle=false,steps=0;
+function drawMonster(x,y,s,m){
+ ctx.fillStyle=m.color;
+ // pixel-art blob body
+ ctx.fillRect(x-s*.35,y-s*.05,s*.7,s*.45);ctx.fillRect(x-s*.25,y-s*.25,s*.5,s*.25);
+ ctx.fillRect(x-s*.45,y+s*.15,s*.2,s*.2);ctx.fillRect(x+s*.25,y+s*.15,s*.2,s*.2);
+ ctx.fillStyle='#fff';ctx.fillRect(x-s*.18,y-s*.12,s*.12,s*.12);ctx.fillRect(x+s*.06,y-s*.12,s*.12,s*.12);
+ ctx.fillStyle='#172637';ctx.fillRect(x-s*.14,y-s*.1,s*.06,s*.07);ctx.fillRect(x+s*.1,y-s*.1,s*.06,s*.07);
+ if(m.art==='fire'){ctx.fillStyle='#ffcf4f';ctx.fillRect(x+s*.18,y-s*.45,s*.15,s*.2);ctx.fillRect(x+s*.28,y-s*.55,s*.12,s*.18)}
+ if(m.art==='leaf'){ctx.fillStyle='#3e9a4b';ctx.fillRect(x-s*.08,y-s*.5,s*.16,s*.22)}
+ if(m.art==='water'){ctx.fillStyle='#b6f1ff';ctx.fillRect(x+s*.15,y-s*.42,s*.15,s*.15)}
+}
+function draw(){
+ ctx.clearRect(0,0,320,256);
+ if(inBattle){ctx.fillStyle='#a7d8e8';ctx.fillRect(0,0,320,140);ctx.fillStyle='#82bf67';ctx.fillRect(0,140,320,116);
+ ctx.fillStyle='#57934e';ctx.fillRect(20,170,120,26);ctx.fillRect(180,100,110,25);
+ if(enemy)drawMonster(220,120,70,enemy);
+ if(party[0])drawMonster(95,192,82,party[0]);
+ }else{
+ ctx.fillStyle='#7fbd62';ctx.fillRect(0,0,320,256);
+ for(let y=0;y<8;y++)for(let x=0;x<10;x++){let xx=x*32,yy=y*32;
+ if((x*7+y*11)%5===0){ctx.fillStyle='#5a9d50';ctx.fillRect(xx+4,yy+7,5,5);ctx.fillRect(xx+17,yy+18,4,4)}
+ }
+ // path and pond
+ ctx.fillStyle='#c9b77c';ctx.fillRect(128,0,64,256);ctx.fillRect(0,96,320,48);
+ ctx.fillStyle='#58b8db';ctx.fillRect(224,24,68,48);
+ // player
+ ctx.fillStyle='#3d4c91';ctx.fillRect(player.x*32+9,player.y*32+15,14,13);
+ ctx.fillStyle='#f0c49a';ctx.fillRect(player.x*32+10,player.y*32+5,12,11);
+ ctx.fillStyle='#4a2c22';ctx.fillRect(player.x*32+9,player.y*32+3,14,5);
+ ctx.fillStyle='#fff';ctx.fillRect(player.x*32+12,player.y*32+9,2,2);
+ }
+}
+function say(t){document.getElementById('message').textContent=t}
+function choose(id){let m=mons[id];starter={...m};party=[starter];document.getElementById('starter').classList.add('hidden');document.getElementById('explore').classList.remove('hidden');say(m.name+'が仲間になった！十字キーで冒険を始めよう。');update();draw()}
+function update(){document.getElementById('partyText').textContent='仲間：'+(party.map(x=>x.name).join('、')||'なし');document.getElementById('balls').textContent='モンスターボール：'+balls}
+function move(dx,dy){if(inBattle||!party.length)return;player.x=Math.max(0,Math.min(9,player.x+dx));player.y=Math.max(0,Math.min(7,player.y+dy));steps++;draw();if(steps%4===0&&Math.random()<.42)encounter()}
+function explore(){if(!party.length)return;encounter()}
+function encounter(){if(inBattle)return;let id=Math.random()<.5?'rocko':'puffin';enemy={...mons[id],max:mons[id].hp};inBattle=true;document.getElementById('battle').classList.remove('hidden');document.getElementById('explore').classList.add('hidden');say('野生の'+enemy.name+'が現れた！どうする？');battleUI();draw()}
+function battleUI(){document.getElementById('battleInfo').innerHTML='<b>野生の'+enemy.name+'（'+enemy.type+'）</b><div class="hp"><span style="width:'+Math.max(0,enemy.hp/enemy.max*100)+'%"></span></div><br><b>'+party[0].name+'（'+party[0].type+'）</b><div>HP '+party[0].hp+'/'+party[0].max+'</div><div class="hp"><span style="width:'+Math.max(0,party[0].hp/party[0].max*100)+'%"></span></div>'}
+function attack(){if(!inBattle)return;let p=party[0];let damage=p.atk+Math.floor(Math.random()*5);enemy.hp-=damage;if(enemy.hp<=0){enemy.hp=0;inBattle=false;party[0].atk++;say(enemy.name+'をたおした！'+p.name+'の攻撃力が1上がった！');endBattle()}else{let ed=Math.max(2,enemy.atk-Math.floor(Math.random()*3));p.hp-=ed;if(p.hp<=0){p.hp=1;say(p.name+'は力尽きそうだ！休んで回復しよう。');}else say(p.name+'の攻撃！'+damage+'ダメージ。'+enemy.name+'の反撃！'+ed+'ダメージ。');battleUI();draw()}}
+function throwBall(){if(!inBattle)return;if(balls<=0){say('モンスターボールがない！');return}balls--;if(enemy.hp<=enemy.max*.55&&Math.random()<.72){party.push({...enemy,hp:enemy.max});say(enemy.name+'を捕まえた！仲間が増えた！');inBattle=false;endBattle()}else{say('捕獲失敗！'+enemy.name+'が反撃した！');party[0].hp=Math.max(1,party[0].hp-4);battleUI();update()} }
+function runAway(){inBattle=false;say('無事に逃げ出した。');endBattle()}
+function endBattle(){document.getElementById('battle').classList.add('hidden');document.getElementById('explore').classList.remove('hidden');update();draw()}
+function heal(){if(inBattle||!party.length)return;party.forEach(m=>m.hp=m.max);say('休んで仲間モンスターのHPが全回復した！');draw()}
+draw();
+</script>
+</body></html>
